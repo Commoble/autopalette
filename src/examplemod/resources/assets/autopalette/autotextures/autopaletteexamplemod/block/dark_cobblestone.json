@@ -1,0 +1,12 @@
+{
+	"parent": "minecraft:block/cobblestone",
+	"palette":
+	{
+		"6e6d6d": "3d3a41",
+		"616161": "332c2f",
+		"a6a6a6": "9d7e7b",
+		"b5b5b5": "b38f8c",
+		"525252": "261f1e",
+		"888788": "77666e"
+	}
+}

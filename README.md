@@ -1,1 +1,1 @@
-autopalette
+TODO add readme
