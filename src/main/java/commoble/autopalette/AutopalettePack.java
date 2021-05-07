@@ -1,9 +1,12 @@
 package commoble.autopalette;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,17 +14,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.JsonOps;
 
 import net.minecraft.client.Minecraft;
@@ -39,6 +46,7 @@ import net.minecraft.resources.ResourcePackType;
 import net.minecraft.resources.data.IMetadataSectionSerializer;
 import net.minecraft.resources.data.PackMetadataSection;
 import net.minecraft.resources.data.PackMetadataSectionSerializer;
+import net.minecraft.util.JSONUtils;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TranslationTextComponent;
 
@@ -61,6 +69,7 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 	public static final List<ResourceLocation> NO_RESOURCES = Collections.emptyList();
 	private final PackMetadataSection packInfo;
 	private Map<ResourceLocation, NativeImage> textures = new HashMap<>();
+	Map<ResourceLocation, Callable<InputStream>> mcmetas = new HashMap<>();
 
 	public AutopalettePack()
 	{
@@ -119,11 +128,20 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 			// load the specified texture from the given available pack
 			// if that was successful, use the palette override to generate a new texture
 		Map<ResourceLocation, NativeImage> fakeTextures = new HashMap<>();
+		Map<ResourceLocation, Callable<InputStream>> mcmetas = new HashMap<>();
 		textureOverrides.forEach((id,override) ->
 			generateImage(id,override,selectedPacks,unselectedPacks)
-				.ifPresent(image->fakeTextures.put(makeTextureID(id), image)));
+				.ifPresent(pair->
+				{
+					NativeImage image = pair.getFirst();
+					ResourceLocation textureID = makeTextureID(id);
+					fakeTextures.put(textureID, image);
+					// if the original texture had metadata, we'll need to provide that later
+					pair.getSecond().ifPresent(metadataGetter -> mcmetas.put(getMetadataLocation(textureID), metadataGetter));
+				}));
 		
 		this.textures = fakeTextures;
+		this.mcmetas = mcmetas;
 		System.out.println("Concluded texture generation");
 	}
 	
@@ -132,7 +150,13 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		return new ResourceLocation(jsonID.getNamespace(), TEXTURE_DIRECTORY+jsonID.getPath()+".png");
 	}
 	
-	public static Optional<NativeImage> generateImage(ResourceLocation overrideID, PaletteOverride override, Map<String,ResourcePackInfo> selectedPacks, Map<String,ResourcePackInfo> unselectedPacks)
+	// from FallbackResourceManager
+	public static ResourceLocation getMetadataLocation(ResourceLocation id)
+	{
+		return new ResourceLocation(id.getNamespace(), id.getPath() + ".mcmeta");
+	}
+	
+	public static Optional<Pair<NativeImage, Optional<Callable<InputStream>>>> generateImage(ResourceLocation overrideID, PaletteOverride override, Map<String,ResourcePackInfo> selectedPacks, Map<String,ResourcePackInfo> unselectedPacks)
 	{
 		ResourceLocation parentTextureID = override.getParentTextureID();
 		String parentPackID = override.getParentPack();
@@ -154,9 +178,32 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		ResourceLocation parentFile = makeTextureID(parentTextureID);
 		try(InputStream inputStream = pack.getResource(ResourcePackType.CLIENT_RESOURCES, parentFile))
 		{
+			// use the palette map to generate a new texture
 			NativeImage image = NativeImage.read(inputStream);
 			NativeImage transformedImage = override.transformImage(image);
-			return Optional.of(transformedImage);
+			// check if the original texture had metadata -- we'll need to provide that from the virtual pack if it exists
+			ResourceLocation metadata = getMetadataLocation(parentFile);
+			Optional<Callable<InputStream>> metadataLookup = Optional.empty();
+			if (pack.hasResource(ResourcePackType.CLIENT_RESOURCES, metadata))
+			{
+				BufferedReader bufferedReader = null;
+				JsonObject metadataJson = null;
+				// read the metadata json from IO now so we don't trip over other IO readers later
+				try (InputStream metadataStream = pack.getResource(ResourcePackType.CLIENT_RESOURCES, metadata))
+				{
+					bufferedReader = new BufferedReader(new InputStreamReader(metadataStream, StandardCharsets.UTF_8));
+					metadataJson = JSONUtils.parse(bufferedReader);
+				} finally {
+		               IOUtils.closeQuietly(bufferedReader);
+	            }
+				if (metadataJson != null)
+				{
+					JsonObject metaDataJsonForLambda = metadataJson; // closure variables must be final or effectively final
+					// we'll need to provide the json in InputStream format
+					metadataLookup = Optional.of(() -> new ByteArrayInputStream(metaDataJsonForLambda.toString().getBytes()));
+				}
+			}
+			return Optional.of(Pair.of(transformedImage, metadataLookup));
 		}
 		catch (IOException e)
 		{
@@ -224,7 +271,7 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 	@Override
 	public boolean hasResource(ResourcePackType type, ResourceLocation id)
 	{
-		return type == ResourcePackType.CLIENT_RESOURCES && this.textures.containsKey(id);
+		return type == ResourcePackType.CLIENT_RESOURCES && (this.textures.containsKey(id) || this.mcmetas.containsKey(id));
 	}
 
 	@Override
@@ -233,15 +280,43 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		// this will be called by the texture stitcher on the main thread after resources are loaded,
 		// so textures will need to be ready and retrievable by then
 		
-		NativeImage image = this.textures.get(id);
-		if (image == null)
+		if (this.textures.containsKey(id))
 		{
-			// from ResourcePack
+			NativeImage image = this.textures.get(id);
+			if (image == null)
+			{
+				// from ResourcePack
+				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
+				throw new ResourcePackFileNotFoundException(this.file, path);
+			}
+			
+			return new ByteArrayInputStream(image.asByteArray());
+		}
+		else if (this.mcmetas.containsKey(id))
+		{
+			Callable<InputStream> getter = this.mcmetas.get(id);
+			if (getter == null)
+			{
+				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
+				throw new ResourcePackFileNotFoundException(this.file, path);
+			}
+			try (InputStream stream = getter.call())
+			{
+				return stream;
+			}
+			catch (Exception e)
+			{
+				LOGGER.error("Unable to read metadata {} due to error.", id);
+				e.printStackTrace();
+				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
+				throw new ResourcePackFileNotFoundException(this.file, path);
+			}
+		}
+		else
+		{
 			String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
 			throw new ResourcePackFileNotFoundException(this.file, path);
 		}
-		
-		return new ByteArrayInputStream(image.asByteArray());
 	}
 
 	@Override

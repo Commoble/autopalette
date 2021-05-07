@@ -24,6 +24,8 @@ public class AutopaletteExampleMod
 		DeferredRegister<Block> blocks = makeDeferredRegister(modBus, ForgeRegistries.BLOCKS);
 		RegistryObject<Block> darkCobblestone = blocks.register("dark_cobblestone", () ->
 			new Block(Properties.copy(Blocks.COBBLESTONE)));
+		RegistryObject<Block> greenMagma = blocks.register("green_magma", () ->
+			new Block(Properties.copy(Blocks.MAGMA_BLOCK)));
 	}
 	
 	private static <T extends IForgeRegistryEntry<T>> DeferredRegister<T> makeDeferredRegister(IEventBus modBus, IForgeRegistry<T> registry)
