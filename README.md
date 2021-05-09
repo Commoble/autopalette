@@ -16,7 +16,7 @@ Users who are creating autotexture jsons may wish to include the "actual" namesp
 
 Autotexture jsons have the following format:
 
-```json
+```jsonc
 {
 	"pack": <optional-string>, // the ID of the pack to read the base texture from, defaults to "vanilla"
 	"require_pack": <optional-boolean>, // defaults false; if true, an autotexture will only generate if the target pack is currently selected by the client
@@ -47,8 +47,8 @@ If the original texture has an .mcmeta file specifying a texture animation, that
 
 Example autotexture json:
 
-```json
-assets/autopalette/autotextures/autopaletteexamplemod/block/dark_cobblestone.json
+```jsonc
+//assets/autopalette/autotextures/autopaletteexamplemod/block/dark_cobblestone.json
 {
 	"parent": "minecraft:block/cobblestone",
 	"palette":
@@ -65,8 +65,8 @@ assets/autopalette/autotextures/autopaletteexamplemod/block/dark_cobblestone.jso
 
 This creates a palette swap of the vanilla cobblestone texture, which we can then refer to in a model json:
 
-```
-assets/autopaletteexamplemod/models/block/dark_cobblestone.json
+```jsonc
+//assets/autopaletteexamplemod/models/block/dark_cobblestone.json
 {
 	"parent": "block/cube_all",
 	"textures":
