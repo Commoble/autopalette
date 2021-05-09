@@ -19,12 +19,17 @@ import net.minecraft.util.ResourceLocation;
 
 public class PaletteOverride
 {
-	
+	// json format codec
 	public static final Codec<PaletteOverride> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+		// the pack ID of the asset pack to pull base textures from
 		Codec.STRING.optionalFieldOf("pack", "vanilla").forGetter(PaletteOverride::getParentPack),
+		// if require_pack is true, the pack must be selected by the user or a texture will not be generated on resource load
 		Codec.BOOL.optionalFieldOf("require_pack", false).forGetter(PaletteOverride::getRequirePack),
+		// parent is the texture ID of the base texture to make a palette swap for
 		ResourceLocation.CODEC.fieldOf("parent").forGetter(PaletteOverride::getParentTextureID),
-		Codec.unboundedMap(Codec.STRING,Codec.STRING).comapFlatMap(PaletteOverride::makePaletteMap, PaletteOverride::encodeMap).fieldOf("palette").forGetter(PaletteOverride::getPalette)
+		// map of hexidecimal integer codes for the palette swap
+		Codec.unboundedMap(Codec.STRING,Codec.STRING).comapFlatMap(PaletteOverride::makePaletteMap, PaletteOverride::encodeMap)
+			.fieldOf("palette").forGetter(PaletteOverride::getPalette)
 	).apply(instance, PaletteOverride::new));
 
 	private final String pack;	public String getParentPack() { return this.pack; }

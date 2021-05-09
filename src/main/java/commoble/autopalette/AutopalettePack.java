@@ -56,6 +56,8 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 	public static final Gson GSON = new Gson();
 	public static final String DIRECTORY = "autotextures";
 	public static final String TEXTURE_DIRECTORY = "textures/";
+	public static final Set<String> NAMESPACES = ImmutableSet.of(Autopalette.MODID);
+	public static final List<ResourceLocation> NO_RESOURCES = Collections.emptyList();
 	// reuse a JRL to parse jsons, hehehe
 	public static final JsonReloadListener JSON_HELPER = new JsonReloadListener(GSON, DIRECTORY)
 	{
@@ -64,12 +66,9 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		protected void apply(Map<ResourceLocation, JsonElement> jsons, IResourceManager manager, IProfiler profiler)
 		{}
 	};
-		
-	public static final Set<String> NAMESPACES = ImmutableSet.of(Autopalette.MODID);
-	public static final List<ResourceLocation> NO_RESOURCES = Collections.emptyList();
+	
 	private final PackMetadataSection packInfo;
-	private Map<ResourceLocation, NativeImage> textures = new HashMap<>();
-	Map<ResourceLocation, Callable<InputStream>> mcmetas = new HashMap<>();
+	private Map<ResourceLocation, Callable<InputStream>> resources = new HashMap<>();
 
 	public AutopalettePack()
 	{
@@ -103,7 +102,7 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 	
 	protected void gatherTextureData(IResourceManager manager, IProfiler profiler)
 	{
-		System.out.println("Starting texture generation");
+		LOGGER.info("Starting autopalette texture generation");
 		// get all available packs (even unselected ones)
 		Minecraft minecraft = Minecraft.getInstance();
 		ResourcePackList packList = minecraft.getResourcePackRepository();
@@ -116,33 +115,27 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 			.filter(info -> !selectedPacks.containsKey(info.getId()))
 			.collect(Collectors.toMap(ResourcePackInfo::getId, info->info));
 		
-		// parse raw jsons from resource packs
-		Map<ResourceLocation, JsonElement> rawJsons = JSON_HELPER.prepare(manager, profiler);
-		// convert to palette override data
-		Map<ResourceLocation, PaletteOverride> textureOverrides = new HashMap<>();
-		rawJsons.forEach((id,json) -> PaletteOverride.CODEC.parse(JsonOps.INSTANCE, json)
-			.resultOrPartial(LOGGER::error) // bad data -> log it
-			.ifPresent(result -> textureOverrides.put(id, result))); // good data -> keep it
-		
 		// for each palette override, we want to
 			// load the specified texture from the given available pack
 			// if that was successful, use the palette override to generate a new texture
-		Map<ResourceLocation, NativeImage> fakeTextures = new HashMap<>();
-		Map<ResourceLocation, Callable<InputStream>> mcmetas = new HashMap<>();
-		textureOverrides.forEach((id,override) ->
-			generateImage(id,override,selectedPacks,unselectedPacks)
-				.ifPresent(pair->
-				{
-					NativeImage image = pair.getFirst();
-					ResourceLocation textureID = makeTextureID(id);
-					fakeTextures.put(textureID, image);
-					// if the original texture had metadata, we'll need to provide that later
-					pair.getSecond().ifPresent(metadataGetter -> mcmetas.put(getMetadataLocation(textureID), metadataGetter));
-				}));
+		Map<ResourceLocation, Callable<InputStream>> resourceStreams = new HashMap<>();
 		
-		this.textures = fakeTextures;
-		this.mcmetas = mcmetas;
-		System.out.println("Concluded texture generation");
+		// parse raw jsons from resource packs
+		Map<ResourceLocation, JsonElement> rawJsons = JSON_HELPER.prepare(manager, profiler);
+		rawJsons.forEach((id,json) -> PaletteOverride.CODEC.parse(JsonOps.INSTANCE, json)
+			.resultOrPartial(LOGGER::error) // bad data -> log it
+			.flatMap(result -> generateImage(id,result,selectedPacks,unselectedPacks))
+			.ifPresent(pair->
+			{
+				NativeImage image = pair.getFirst();
+				ResourceLocation textureID = makeTextureID(id);
+				resourceStreams.put(textureID, () -> new ByteArrayInputStream(image.asByteArray()));
+				// if the original texture had metadata, we'll need to provide that later
+				pair.getSecond().ifPresent(metadataGetter -> resourceStreams.put(getMetadataLocation(textureID), metadataGetter));
+			}));
+		
+		this.resources = resourceStreams;
+		LOGGER.info("Concluded autopalette texture generation");
 	}
 	
 	public static ResourceLocation makeTextureID(ResourceLocation jsonID)
@@ -163,7 +156,14 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		ResourcePackInfo info = override.getPackInfo(selectedPacks, unselectedPacks);
 		if (info == null)
 		{
-			LOGGER.debug("Cannot override texture {} in pack {} specified by override {}: pack does not exist", parentTextureID, parentPackID, overrideID);
+			// if we can't find the pack, don't do anything
+			// if the pack doesn't exist at all, we should probably warn the user
+			if (!selectedPacks.containsKey(parentPackID) && !unselectedPacks.containsKey(parentPackID))
+			{
+				LOGGER.error("Cannot override texture {} in pack {} specified by override {}: pack does not exist", parentTextureID, parentPackID, overrideID);
+				LOGGER.error("Available selected packs: {}", selectedPacks.keySet());
+				LOGGER.error("Available unselected packs: {}", unselectedPacks.keySet());
+			}
 			return Optional.empty();
 		}
 		
@@ -271,7 +271,7 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 	@Override
 	public boolean hasResource(ResourcePackType type, ResourceLocation id)
 	{
-		return type == ResourcePackType.CLIENT_RESOURCES && (this.textures.containsKey(id) || this.mcmetas.containsKey(id));
+		return type == ResourcePackType.CLIENT_RESOURCES && (this.resources.containsKey(id));
 	}
 
 	@Override
@@ -280,43 +280,35 @@ public class AutopalettePack extends ResourcePack implements IFutureReloadListen
 		// this will be called by the texture stitcher on the main thread after resources are loaded,
 		// so textures will need to be ready and retrievable by then
 		
-		if (this.textures.containsKey(id))
+		if (this.resources.containsKey(id))
 		{
-			NativeImage image = this.textures.get(id);
-			if (image == null)
+			Callable<InputStream> streamGetter = this.resources.get(id);
+			if (streamGetter == null)
 			{
-				// from ResourcePack
-				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
-				throw new ResourcePackFileNotFoundException(this.file, path);
+				throw this.makeFileNotFoundException(type, id);
 			}
 			
-			return new ByteArrayInputStream(image.asByteArray());
-		}
-		else if (this.mcmetas.containsKey(id))
-		{
-			Callable<InputStream> getter = this.mcmetas.get(id);
-			if (getter == null)
+			try
 			{
-				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
-				throw new ResourcePackFileNotFoundException(this.file, path);
-			}
-			try (InputStream stream = getter.call())
-			{
-				return stream;
+				return streamGetter.call();
 			}
 			catch (Exception e)
 			{
-				LOGGER.error("Unable to read metadata {} due to error.", id);
 				e.printStackTrace();
-				String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
-				throw new ResourcePackFileNotFoundException(this.file, path);
+				throw this.makeFileNotFoundException(type, id);
 			}
 		}
 		else
 		{
-			String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
-			throw new ResourcePackFileNotFoundException(this.file, path);
+			throw this.makeFileNotFoundException(type, id);
 		}
+	}
+	
+	public ResourcePackFileNotFoundException makeFileNotFoundException(ResourcePackType type, ResourceLocation id)
+	{
+		// from ResourcePack
+		String path = String.format("%s/%s/%s", type.getDirectory(), id.getNamespace(), id.getPath());
+		return new ResourcePackFileNotFoundException(this.file, path);
 	}
 
 	@Override

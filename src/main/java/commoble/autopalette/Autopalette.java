@@ -58,9 +58,9 @@ public class Autopalette
 					new TranslationTextComponent("autopalette.pack_description"), // description
 					PackCompatibility.COMPATIBLE,
 					ResourcePackInfo.Priority.TOP,
-					false, // fixed position
+					false, // fixed position? no
 					IPackNameDecorator.DEFAULT,
-					false // hidden
+					false // hidden? no
 					)));
 			
 			// if we can't cast the resource manager then modloading should fail
