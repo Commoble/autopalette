@@ -1,5 +1,11 @@
 Autopalette is a forge mod for minecraft that enables mods and resource packs to generate palette-swaps of other textures when resource packs are loaded. These generated textures do not replace the original textures and may be used alongside them.
 
+Autopalette can be installed by installing a minecraft-with-forge instance and then placing an autopalette jar in your mods folder.
+
+Built autopalette jars are available here:
+
+https://www.curseforge.com/minecraft/mc-mods/autopalette
+
 ## Autotexture Jsons
 
 Texture generation is done by way of autotexture jsons. These should be placed in the assets folder of a mod or resource pack at the file location
