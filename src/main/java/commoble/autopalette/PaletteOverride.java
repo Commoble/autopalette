@@ -13,9 +13,9 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import net.minecraft.client.renderer.texture.NativeImage;
-import net.minecraft.resources.ResourcePackInfo;
-import net.minecraft.util.ResourceLocation;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.resources.ResourceLocation;
 
 public class PaletteOverride
 {
@@ -45,13 +45,13 @@ public class PaletteOverride
 		this.map = map;
 	}
 	
-	public @Nullable ResourcePackInfo getPackInfo(Map<String,ResourcePackInfo> selectedPacks, Map<String,ResourcePackInfo> unselectedPacks)
+	public @Nullable Pack getPackInfo(Map<String,Pack> selectedPacks, Map<String,Pack> unselectedPacks)
 	{
 		// if we require a pack to be selected to pull textures from it, only look in the selected packs
 		// if we don't require a pack to be selected, look in the selected packs first,
 			// then look in the unselected packs if the pack wasn't in the selected packs
 		String packID = this.getParentPack();
-		ResourcePackInfo selectedInfo = selectedPacks.get(packID);
+		Pack selectedInfo = selectedPacks.get(packID);
 		return selectedInfo != null || this.requirePack
 			? selectedInfo
 			: unselectedPacks.get(packID);
