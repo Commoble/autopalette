@@ -18,7 +18,7 @@ version = "${mod_version}"
 group = "commoble.${modid}"
 archivesBaseName = "${modid}-${mc_version}"
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(16)
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 sourceSets
 {
@@ -28,7 +28,7 @@ sourceSets
 }
 
 minecraft {
-    mappings channel: 'official', version: "${mappings_version}"    
+    mappings channel: 'official', version: "${mc_version}"    
     accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
     
     runs {
