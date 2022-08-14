@@ -28,27 +28,27 @@ import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.JsonOps;
 
 import net.minecraft.client.Minecraft;
-import com.mojang.blaze3d.platform.NativeImage;
-import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
-import net.minecraft.util.profiling.ProfilerFiller;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
-import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.server.packs.PackResources;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.AbstractPackResources;
-import net.minecraft.server.packs.ResourcePackFileNotFoundException;
-import net.minecraft.server.packs.repository.Pack;
-import net.minecraft.server.packs.repository.PackRepository;
+import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.ResourcePackFileNotFoundException;
 import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
 import net.minecraft.server.packs.metadata.pack.PackMetadataSection;
 import net.minecraft.server.packs.metadata.pack.PackMetadataSectionSerializer;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackRepository;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.util.GsonHelper;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.network.chat.TranslatableComponent;
+import net.minecraft.util.profiling.ProfilerFiller;
 
 public class AutopalettePack extends AbstractPackResources implements PreparableReloadListener
 {
@@ -73,7 +73,7 @@ public class AutopalettePack extends AbstractPackResources implements Preparable
 	public AutopalettePack()
 	{
 		super(new File("autopalette_virtual_pack"));
-		this.packInfo = new PackMetadataSection(new TranslatableComponent("autopalette.pack_description"), 6);;
+		this.packInfo = new PackMetadataSection(Component.translatable("autopalette.pack_description"), 6);;
 	}
 	
 	// resource loading stuff
@@ -312,7 +312,7 @@ public class AutopalettePack extends AbstractPackResources implements Preparable
 	}
 
 	@Override
-	public Collection<ResourceLocation> getResources(PackType packType, String namespace, String id, int maxDepth, Predicate<String> filter)
+	public Collection<ResourceLocation> getResources(PackType packType, String namespace, String id, Predicate<ResourceLocation> filter)
 	{
 		// getResources isn't called by anything related to texture stitching;
 		// it IS called by some reload listeners on worker threads to load resources, we should make sure we don't break anything

@@ -1,11 +1,11 @@
 package commoble.autopalette;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackCompatibility;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.resources.ReloadableResourceManager;
-import net.minecraft.server.packs.repository.PackCompatibility;
-import net.minecraft.server.packs.repository.Pack;
-import net.minecraft.network.chat.TranslatableComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.IExtensionPoint;
@@ -53,8 +53,8 @@ public class Autopalette
 					"autopalette_textures",	// id
 					true,	// required -- this MAY need to be true for the pack to be enabled by default
 					() -> VIRTUAL_PACK, // pack supplier
-					new TranslatableComponent("autopalette.pack_title"), // title
-					new TranslatableComponent("autopalette.pack_description"), // description
+					Component.translatable("autopalette.pack_title"), // title
+					Component.translatable("autopalette.pack_description"), // description
 					PackCompatibility.COMPATIBLE,
 					Pack.Position.TOP,
 					false, // fixed position? no

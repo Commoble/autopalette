@@ -9,7 +9,6 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.IForgeRegistry;
-import net.minecraftforge.registries.IForgeRegistryEntry;
 
 @Mod(AutopaletteExampleMod.MODID)
 public class AutopaletteExampleMod
@@ -27,7 +26,7 @@ public class AutopaletteExampleMod
 			new Block(Properties.copy(Blocks.MAGMA_BLOCK)));
 	}
 	
-	private static <T extends IForgeRegistryEntry<T>> DeferredRegister<T> makeDeferredRegister(IEventBus modBus, IForgeRegistry<T> registry)
+	private static <T> DeferredRegister<T> makeDeferredRegister(IEventBus modBus, IForgeRegistry<T> registry)
 	{
 		DeferredRegister<T> register = DeferredRegister.create(registry, MODID);
 		register.register(modBus);
